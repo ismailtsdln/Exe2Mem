@@ -1,7 +1,5 @@
 # Exe2Mem: Memory-Native PE Transformation Framework
 
-![Exe2Mem Logo](https://raw.githubusercontent.com/ismailtsdln/Exe2Mem/main/docs/assets/logo.png)
-
 [![C++23](https://img.shields.io/badge/Language-C%2B%2B23-blue.svg)](https://en.cppreference.com/w/cpp/23)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
