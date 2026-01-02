@@ -5,8 +5,14 @@
 
 #include "../../core/pe_parser/pe_parser.hpp"
 #include "../../core/pe_validator/pe_validator.hpp"
+#include "../../loader/runtime_stub/runtime_stub.hpp"
+#include "../../transform/execution_blob_generator.hpp"
+#include "../../transform/import_resolver.hpp"
+#include "../../transform/memory_layout_builder.hpp"
 
 using namespace exe2mem::core;
+using namespace exe2mem::transform;
+using namespace exe2mem::loader;
 
 void test_pe_parser_basic() {
   std::vector<uint8_t> fake_pe(4096, 0);
@@ -113,10 +119,46 @@ void test_pe_validator() {
   std::cout << "[+] test_pe_validator passed!" << std::endl;
 }
 
+void test_e2e_blob_flow() {
+  std::vector<uint8_t> fake_pe(4096, 0);
+  IMAGE_DOS_HEADER *dos = reinterpret_cast<IMAGE_DOS_HEADER *>(fake_pe.data());
+  dos->e_magic = 0x5A4D;
+  dos->e_lfanew = 0x40;
+  uint32_t *pe_sig = reinterpret_cast<uint32_t *>(fake_pe.data() + 0x40);
+  *pe_sig = 0x00004550;
+
+  IMAGE_NT_HEADERS64 *nt64 =
+      reinterpret_cast<IMAGE_NT_HEADERS64 *>(fake_pe.data() + 0x40);
+  nt64->FileHeader.Machine = 0x8664;
+  nt64->FileHeader.NumberOfSections = 1;
+  nt64->FileHeader.SizeOfOptionalHeader = sizeof(IMAGE_OPTIONAL_HEADER64);
+  nt64->OptionalHeader.Magic = 0x020B;
+  nt64->OptionalHeader.SizeOfImage = 0x2000;
+  nt64->OptionalHeader.SizeOfHeaders = 0x200;
+
+  PeParser parser(fake_pe);
+  assert(parser.parse());
+
+  MemoryLayoutBuilder builder(parser);
+  auto image = builder.build();
+
+  ImportResolver import_resolver(parser);
+  auto meta = import_resolver.serialize_imports();
+
+  ExecutionBlobGenerator generator;
+  auto blob = generator.generate(image, meta.buffer);
+  assert(!blob.empty());
+
+  assert(RuntimeStub::execute(blob));
+
+  std::cout << "[+] test_e2e_blob_flow passed!" << std::endl;
+}
+
 int main() {
   try {
     test_pe_parser_basic();
     test_pe_validator();
+    test_e2e_blob_flow();
     std::cout << "[***] ALL TESTS PASSED SUCCESSFULLY! [***]" << std::endl;
   } catch (const std::exception &e) {
     std::cerr << "[-] Test failed: " << e.what() << std::endl;

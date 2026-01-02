@@ -7,7 +7,7 @@ namespace loader {
 
 class EntryDispatcher {
 public:
-  static void dispatch(uint64_t entry_point);
+  static bool dispatch(void *entry_point);
 };
 
 } // namespace loader

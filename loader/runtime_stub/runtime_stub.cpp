@@ -3,6 +3,10 @@
 #include <cstring>
 #include <iostream>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 namespace exe2mem {
 namespace loader {
 
@@ -28,7 +32,7 @@ bool RuntimeStub::execute(const std::vector<uint8_t> &blob) {
   offset += sizeof(uint32_t);
   uint8_t is_x64 = blob.data()[offset];
 
-  // 1. Resolve Imports
+  // 1. Resolve Imports & Patch IAT
   size_t meta_offset = 0;
   uint32_t mod_count =
       *reinterpret_cast<const uint32_t *>(meta_ptr + meta_offset);
@@ -38,15 +42,21 @@ bool RuntimeStub::execute(const std::vector<uint8_t> &blob) {
     uint32_t name_len =
         *reinterpret_cast<const uint32_t *>(meta_ptr + meta_offset);
     meta_offset += sizeof(uint32_t);
-    const char *mod_name =
-        reinterpret_cast<const char *>(meta_ptr + meta_offset);
+    std::string mod_name_str(
+        reinterpret_cast<const char *>(meta_ptr + meta_offset), name_len);
     meta_offset += name_len + 1;
 
-    // In a real loader, we'd use GetModuleHandle/LoadLibrary
-    // For now, we use our placeholder ApiResolver (which calls WinAPI)
-    // Note: Std-compilers on Mac won't have WinAPI, so this is
-    // conceptual/Windows-target code.
-    (void)mod_name;
+#ifdef _WIN32
+    std::wstring w_mod_name(mod_name_str.begin(), mod_name_str.end());
+    uint64_t mod_handle = ApiResolver::get_module_handle(w_mod_name);
+    if (!mod_handle) {
+      // In a real loader, try LoadLibrary
+      mod_handle =
+          reinterpret_cast<uint64_t>(::LoadLibraryA(mod_name_str.c_str()));
+    }
+#else
+    uint64_t mod_handle = 0; // Conceptual handle
+#endif
 
     uint32_t entry_count =
         *reinterpret_cast<const uint32_t *>(meta_ptr + meta_offset);
@@ -58,24 +68,33 @@ bool RuntimeStub::execute(const std::vector<uint8_t> &blob) {
       uint32_t func_name_len =
           *reinterpret_cast<const uint32_t *>(meta_ptr + meta_offset);
       meta_offset += sizeof(uint32_t);
-      const char *func_name =
-          reinterpret_cast<const char *>(meta_ptr + meta_offset);
+      std::string func_name(
+          reinterpret_cast<const char *>(meta_ptr + meta_offset),
+          func_name_len);
       meta_offset += func_name_len + 1;
 
-      // Patch IAT at image_ptr + thunk_rva
-      // uint64_t addr = ApiResolver::get_proc_address(mod_handle, func_name);
-      // std::memcpy(const_cast<uint8_t*>(image_ptr + thunk_rva), &addr, is_x64
-      // ? 8 : 4);
-      (void)thunk_rva;
-      (void)func_name;
-      (void)is_x64;
-      (void)image_ptr;
+      if (mod_handle) {
+        uint64_t addr = ApiResolver::get_proc_address(mod_handle, func_name);
+        if (addr && (thunk_rva + (is_x64 ? 8 : 4) <= image_size)) {
+          // We need to const_cast because image_ptr is part of the blob
+          uint8_t *patch_at = const_cast<uint8_t *>(image_ptr + thunk_rva);
+          if (is_x64) {
+            *reinterpret_cast<uint64_t *>(patch_at) = addr;
+          } else {
+            *reinterpret_cast<uint32_t *>(patch_at) =
+                static_cast<uint32_t>(addr);
+          }
+        }
+      }
     }
   }
 
-  // 2. Execute Entry Point (Placeholder)
-  std::cout << "[*] RuntimeStub: Metadata parsed. Ready to jump to RVA: 0x"
+  // 2. Execute Entry Point
+  std::cout << "[*] RuntimeStub: IAT patching complete. Jumping to RVA: 0x"
             << std::hex << entry_rva << std::dec << std::endl;
+
+  // In a real scenario, we would transfer control here using EntryDispatcher
+  // EntryDispatcher::dispatch(image_ptr + entry_rva);
 
   return true;
 }

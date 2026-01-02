@@ -7,7 +7,7 @@ namespace transform {
 
 class EntryPointRewriter {
 public:
-  bool rewrite(MemoryImage &image, uint32_t new_entry_rva) const;
+  static bool rewrite(MemoryImage &image, uint32_t new_entry_rva);
 };
 
 } // namespace transform

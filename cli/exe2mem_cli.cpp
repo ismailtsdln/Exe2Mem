@@ -7,6 +7,7 @@
 
 #include "../core/pe_parser/pe_parser.hpp"
 #include "../core/pe_validator/pe_validator.hpp"
+#include "../transform/entrypoint_rewriter.hpp"
 #include "../transform/execution_blob_generator.hpp"
 #include "../transform/import_resolver.hpp"
 #include "../transform/memory_layout_builder.hpp"
@@ -15,7 +16,8 @@
 using namespace exe2mem;
 
 void print_usage() {
-  std::cout << "Usage: exe2mem_cli <input_pe> <output_blob>" << std::endl;
+  std::cout << "Usage: exe2mem_cli <input_pe> <output_blob> [--entry <rva>]"
+            << std::endl;
 }
 
 int main(int argc, char *argv[]) {
@@ -26,6 +28,17 @@ int main(int argc, char *argv[]) {
 
   const std::string input_path_str = argv[1];
   const std::string output_path_str = argv[2];
+  uint32_t custom_entry_rva = 0;
+  bool has_custom_entry = false;
+
+  for (int i = 3; i < argc; ++i) {
+    if (std::string(argv[i]) == "--entry" && i + 1 < argc) {
+      custom_entry_rva =
+          static_cast<uint32_t>(std::stoul(argv[i + 1], nullptr, 0));
+      has_custom_entry = true;
+      i++;
+    }
+  }
 
   try {
     std::ifstream file(input_path_str, std::ios::binary);
@@ -55,6 +68,16 @@ int main(int argc, char *argv[]) {
 
     transform::RelocationEngine reloc_engine(parser);
     reloc_engine.apply(image, image.image_base);
+
+    if (has_custom_entry) {
+      if (!transform::EntryPointRewriter::rewrite(image, custom_entry_rva)) {
+        std::cerr << "Warning: Failed to rewrite entry point. Using original."
+                  << std::endl;
+      } else {
+        std::cout << "[*] Entry point rewritten to RVA: 0x" << std::hex
+                  << custom_entry_rva << std::dec << std::endl;
+      }
+    }
 
     transform::ImportResolver import_resolver(parser);
     auto meta = import_resolver.serialize_imports();
