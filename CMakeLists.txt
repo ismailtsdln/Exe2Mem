@@ -17,8 +17,8 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 # Modules
 add_subdirectory(core)
-# add_subdirectory(transform)
-# add_subdirectory(loader)
+add_subdirectory(transform)
+add_subdirectory(loader)
 add_subdirectory(cli)
 
 # Tests

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/pe_parser/pe_parser.hpp"
+#include "../core/pe_parser/pe_parser.hpp"
 #include <cstdint>
 #include <vector>
 
