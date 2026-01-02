@@ -18,8 +18,6 @@ bool PeValidator::validate() const {
     m_errors.push_back("PE has no sections");
   }
 
-  // Add more validation logic here (e.g., checking alignment, sizes, etc.)
-
   return m_errors.empty();
 }
 

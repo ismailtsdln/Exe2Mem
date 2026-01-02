@@ -154,6 +154,26 @@ struct IMAGE_BASE_RELOCATION {
   uint32_t SizeOfBlock;
 };
 
+struct IMAGE_TLS_DIRECTORY64 {
+  uint64_t StartAddressOfRawData;
+  uint64_t EndAddressOfRawData;
+  uint64_t AddressOfIndex;
+  uint64_t AddressOfCallBacks;
+  uint32_t SizeOfZeroFill;
+  uint32_t Characteristics;
+};
+
+struct IMAGE_TLS_DIRECTORY32 {
+  uint32_t StartAddressOfRawData;
+  uint32_t EndAddressOfRawData;
+  uint32_t AddressOfIndex;
+  uint32_t AddressOfCallBacks;
+  uint32_t SizeOfZeroFill;
+  uint32_t Characteristics;
+};
+
+#pragma pack(pop)
+
 struct ImportEntry {
   std::string module_name;
   std::string function_name;
@@ -176,8 +196,6 @@ struct RelocationBlock {
   std::vector<RelocationEntry> entries;
 };
 
-#pragma pack(pop)
-
 class PeParser {
 public:
   explicit PeParser(std::vector<uint8_t> data);
@@ -193,14 +211,25 @@ public:
   uint32_t get_rva_to_offset(uint32_t rva) const;
   const uint8_t *get_rva_ptr(uint32_t rva) const;
 
+  uint64_t get_image_base() const;
+  uint32_t get_size_of_image() const;
+  uint32_t get_entry_point_rva() const;
+  uint32_t get_size_of_headers() const;
+  uint16_t get_number_of_sections() const;
+  const std::vector<uint8_t> &get_raw_data() const { return m_raw_data; }
+
   const std::vector<ImportModule> &get_imports() const { return m_imports; }
   const std::vector<RelocationBlock> &get_relocations() const {
     return m_relocations;
+  }
+  const std::vector<uint64_t> &get_tls_callbacks() const {
+    return m_tls_callbacks;
   }
 
 private:
   bool parse_imports();
   bool parse_relocations();
+  bool parse_tls();
 
   std::vector<uint8_t> m_raw_data;
   const IMAGE_DOS_HEADER *m_dos_header = nullptr;
@@ -209,9 +238,9 @@ private:
   std::vector<const IMAGE_SECTION_HEADER *> m_sections;
   std::vector<ImportModule> m_imports;
   std::vector<RelocationBlock> m_relocations;
+  std::vector<uint64_t> m_tls_callbacks;
   bool m_is_x64 = false;
 };
 
 } // namespace core
 } // namespace exe2mem
-```
