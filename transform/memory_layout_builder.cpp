@@ -14,27 +14,44 @@ MemoryImage MemoryLayoutBuilder::build() const {
   image.size_of_image = m_parser.get_size_of_image();
   image.entry_point_rva = m_parser.get_entry_point_rva();
 
-  // Allocate image buffer
+  if (image.size_of_image == 0)
+    return image;
+
+  // Allocate image buffer and zero-initialize
   image.buffer.resize(image.size_of_image, 0);
 
   // Copy headers
   uint32_t size_of_headers = m_parser.get_size_of_headers();
   const auto &raw_data = m_parser.get_raw_data();
-  if (size_of_headers > 0 && size_of_headers <= raw_data.size()) {
-    std::memcpy(image.buffer.data(), raw_data.data(), size_of_headers);
+
+  if (size_of_headers > 0) {
+    uint32_t copy_size =
+        std::min(size_of_headers, static_cast<uint32_t>(raw_data.size()));
+    std::memcpy(image.buffer.data(), raw_data.data(), copy_size);
   }
 
   // Copy sections
   uint16_t num_sections = m_parser.get_number_of_sections();
   for (uint16_t i = 0; i < num_sections; ++i) {
     auto section = m_parser.get_section_header(i);
-    if (section && section->SizeOfRawData > 0) {
+    if (!section)
+      continue;
+
+    if (section->SizeOfRawData > 0) {
       uint32_t dest_rva = section->VirtualAddress;
       uint32_t src_offset = section->PointerToRawData;
       uint32_t copy_size = section->SizeOfRawData;
 
-      if (dest_rva + copy_size <= image.size_of_image &&
-          src_offset + copy_size <= raw_data.size()) {
+      // Boundary checks
+      if (dest_rva + copy_size > image.size_of_image) {
+        copy_size = image.size_of_image - dest_rva;
+      }
+
+      if (src_offset + copy_size > raw_data.size()) {
+        copy_size = static_cast<uint32_t>(raw_data.size()) - src_offset;
+      }
+
+      if (copy_size > 0) {
         std::memcpy(image.buffer.data() + dest_rva,
                     raw_data.data() + src_offset, copy_size);
       }

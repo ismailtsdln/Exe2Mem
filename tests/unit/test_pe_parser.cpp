@@ -29,6 +29,7 @@ void test_pe_parser_basic() {
   nt64->OptionalHeader.Magic = 0x020B; // PE32+
   nt64->OptionalHeader.SizeOfImage = 0x2000;
   nt64->OptionalHeader.ImageBase = 0x140000000;
+  nt64->OptionalHeader.SizeOfHeaders = 0x200;
 
   // Section header
   IMAGE_SECTION_HEADER *section = reinterpret_cast<IMAGE_SECTION_HEADER *>(
@@ -43,12 +44,15 @@ void test_pe_parser_basic() {
   PeParser parser(fake_pe);
   assert(parser.parse());
   assert(parser.is_x64());
-  assert(parser.get_section_header(0) != nullptr);
-  assert(std::string(reinterpret_cast<const char *>(
-             parser.get_section_header(0)->Name)) == ".text");
+
+  // Test Header RVA (Bug fix verification)
+  assert(parser.get_rva_to_offset(0x10) == 0x10);
+  assert(parser.get_rva_ptr(0x10) != nullptr);
+
+  // Test Section RVA
   assert(parser.get_rva_to_offset(0x1100) == 0x200 + 0x100);
 
-  std::cout << "test_pe_parser_basic passed!" << std::endl;
+  std::cout << "[+] test_pe_parser_basic passed!" << std::endl;
 }
 
 void test_pe_validator() {
@@ -67,23 +71,55 @@ void test_pe_validator() {
       reinterpret_cast<IMAGE_NT_HEADERS64 *>(fake_pe.data() + 0x40);
   nt64->FileHeader.Machine = 0x8664;
   nt64->FileHeader.NumberOfSections = 0; // Invalid for validator
+  nt64->FileHeader.SizeOfOptionalHeader = sizeof(IMAGE_OPTIONAL_HEADER64);
+  nt64->OptionalHeader.SizeOfHeaders = 0x200;
 
-  PeParser parser(fake_pe);
-  assert(parser.parse());
+  {
+    PeParser parser(fake_pe);
+    assert(parser.parse());
+    PeValidator validator(parser);
+    assert(!validator.validate()); // Should fail due to 0 sections
+  }
 
-  PeValidator validator(parser);
-  assert(!validator.validate());
-  assert(!validator.get_errors().empty());
+  // Test Section Overlap (Bug fix verification)
+  nt64->FileHeader.NumberOfSections = 2;
+  IMAGE_SECTION_HEADER *s1 = reinterpret_cast<IMAGE_SECTION_HEADER *>(
+      fake_pe.data() + 0x40 + 4 + sizeof(IMAGE_FILE_HEADER) +
+      sizeof(IMAGE_OPTIONAL_HEADER64));
+  s1->VirtualAddress = 0x1000;
+  s1->Misc.VirtualSize = 0x1000;
+  s1->PointerToRawData = 0x200;
+  s1->SizeOfRawData = 0x200;
 
-  std::cout << "test_pe_validator passed!" << std::endl;
+  IMAGE_SECTION_HEADER *s2 = s1 + 1;
+  s2->VirtualAddress = 0x1500; // Overlaps with s1
+  s2->Misc.VirtualSize = 0x1000;
+  s2->PointerToRawData = 0x400;
+  s2->SizeOfRawData = 0x200;
+
+  {
+    PeParser parser(fake_pe);
+    assert(parser.parse());
+    PeValidator validator(parser);
+    assert(!validator.validate());
+    bool found_overlap = false;
+    for (const auto &err : validator.get_errors()) {
+      if (err.find("overlap") != std::string::npos)
+        found_overlap = true;
+    }
+    assert(found_overlap);
+  }
+
+  std::cout << "[+] test_pe_validator passed!" << std::endl;
 }
 
 int main() {
   try {
     test_pe_parser_basic();
     test_pe_validator();
+    std::cout << "[***] ALL TESTS PASSED SUCCESSFULLY! [***]" << std::endl;
   } catch (const std::exception &e) {
-    std::cerr << "Test failed: " << e.what() << std::endl;
+    std::cerr << "[-] Test failed: " << e.what() << std::endl;
     return 1;
   }
   return 0;

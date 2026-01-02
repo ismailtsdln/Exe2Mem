@@ -48,6 +48,9 @@ bool PeParser::parse() {
         file_header->SizeOfOptionalHeader);
   }
 
+  if (!validate_ptr(section_ptr, sizeof(IMAGE_SECTION_HEADER) *
+                                     file_header->NumberOfSections))
+    return false;
   for (uint16_t i = 0; i < file_header->NumberOfSections; ++i) {
     m_sections.push_back(section_ptr + i);
   }
@@ -57,6 +60,12 @@ bool PeParser::parse() {
   if (!parse_relocations())
     return false;
   return parse_tls();
+}
+
+bool PeParser::validate_ptr(const void *ptr, size_t size) const {
+  const uint8_t *p = reinterpret_cast<const uint8_t *>(ptr);
+  return (p >= m_raw_data.data() &&
+          (p + size) <= (m_raw_data.data() + m_raw_data.size()));
 }
 
 bool PeParser::is_x64() const { return m_is_x64; }
@@ -82,10 +91,21 @@ const IMAGE_DATA_DIRECTORY *PeParser::get_data_directory(uint16_t index) const {
 }
 
 uint32_t PeParser::get_rva_to_offset(uint32_t rva) const {
+  // Check if RVA is within headers
+  uint32_t size_of_headers = get_size_of_headers();
+  if (rva < size_of_headers) {
+    return rva;
+  }
+
   for (const auto *section : m_sections) {
     if (rva >= section->VirtualAddress &&
         rva < (section->VirtualAddress + section->Misc.VirtualSize)) {
-      return section->PointerToRawData + (rva - section->VirtualAddress);
+
+      uint32_t offset_in_section = rva - section->VirtualAddress;
+      if (offset_in_section >= section->SizeOfRawData)
+        return 0; // Padding area
+
+      return section->PointerToRawData + offset_in_section;
     }
   }
   return 0;

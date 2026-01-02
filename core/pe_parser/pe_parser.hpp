@@ -211,6 +211,8 @@ public:
   uint32_t get_rva_to_offset(uint32_t rva) const;
   const uint8_t *get_rva_ptr(uint32_t rva) const;
 
+  bool validate_ptr(const void *ptr, size_t size) const;
+
   uint64_t get_image_base() const;
   uint32_t get_size_of_image() const;
   uint32_t get_entry_point_rva() const;

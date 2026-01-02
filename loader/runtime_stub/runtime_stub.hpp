@@ -8,7 +8,7 @@ namespace loader {
 
 class RuntimeStub {
 public:
-  void execute(const std::vector<uint8_t> &image_buffer, uint64_t entry_rva);
+  static bool execute(const std::vector<uint8_t> &blob);
 };
 
 } // namespace loader
