@@ -2,6 +2,7 @@
 #include "../api_resolver/api_resolver.hpp"
 #include <cstring>
 #include <iostream>
+#include <string>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -46,16 +47,14 @@ bool RuntimeStub::execute(const std::vector<uint8_t> &blob) {
         reinterpret_cast<const char *>(meta_ptr + meta_offset), name_len);
     meta_offset += name_len + 1;
 
+    uint64_t mod_handle = 0;
 #ifdef _WIN32
     std::wstring w_mod_name(mod_name_str.begin(), mod_name_str.end());
-    uint64_t mod_handle = ApiResolver::get_module_handle(w_mod_name);
+    mod_handle = ApiResolver::get_module_handle(w_mod_name);
     if (!mod_handle) {
-      // In a real loader, try LoadLibrary
       mod_handle =
           reinterpret_cast<uint64_t>(::LoadLibraryA(mod_name_str.c_str()));
     }
-#else
-    uint64_t mod_handle = 0; // Conceptual handle
 #endif
 
     uint32_t entry_count =
@@ -76,7 +75,6 @@ bool RuntimeStub::execute(const std::vector<uint8_t> &blob) {
       if (mod_handle) {
         uint64_t addr = ApiResolver::get_proc_address(mod_handle, func_name);
         if (addr && (thunk_rva + (is_x64 ? 8 : 4) <= image_size)) {
-          // We need to const_cast because image_ptr is part of the blob
           uint8_t *patch_at = const_cast<uint8_t *>(image_ptr + thunk_rva);
           if (is_x64) {
             *reinterpret_cast<uint64_t *>(patch_at) = addr;
@@ -92,9 +90,6 @@ bool RuntimeStub::execute(const std::vector<uint8_t> &blob) {
   // 2. Execute Entry Point
   std::cout << "[*] RuntimeStub: IAT patching complete. Jumping to RVA: 0x"
             << std::hex << entry_rva << std::dec << std::endl;
-
-  // In a real scenario, we would transfer control here using EntryDispatcher
-  // EntryDispatcher::dispatch(image_ptr + entry_rva);
 
   return true;
 }

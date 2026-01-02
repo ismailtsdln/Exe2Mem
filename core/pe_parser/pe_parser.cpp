@@ -1,6 +1,8 @@
 #include "pe_parser.hpp"
+#include <algorithm>
 #include <cstring>
-#include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace exe2mem {
 namespace core {
